@@ -3,7 +3,7 @@
 set -e
 
 APP_NAME="gh-proxy"
-VERSION="v0.0.1"
+VERSION="v0.0.2"
 URL_PREFIX="https://github.com/plutonyx/gh-proxy/releases/download/${VERSION}"
 INSTALL_DIR=${INSTALL_DIR:-/usr/local/bin}
 
