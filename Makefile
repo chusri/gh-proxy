@@ -1,7 +1,7 @@
 REPOSITORY=plutonyx
 GIT_SHA_FETCH := $(shell git rev-parse HEAD | cut -c 1-8)
 APP_NAME := gh-proxy
-IMAGE_NAME := ${APP_NAME}
+IMAGE_NAME := ${}
 DOCKERFILE := ./Dockerfile
 
 .PHONY: all
@@ -32,9 +32,7 @@ test:
 
 
 # --- release --- 
-.PHONY: clean release
-clean:
-	rm -rf bin/*
+.PHONY: release
 release: clean
 	GOOS=darwin     GOARCH=amd64    go build -ldflags '-s' -o bin/${APP_NAME}-darwin-amd64       .
 	GOOS=darwin     GOARCH=arm64    go build -ldflags '-s' -o bin/${APP_NAME}-darwin-arm64       .
