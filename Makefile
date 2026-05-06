@@ -1,7 +1,7 @@
 REPOSITORY=plutonyx
 GIT_SHA_FETCH := $(shell git rev-parse HEAD | cut -c 1-8)
 APP_NAME := gh-proxy
-IMAGE_NAME := ${}
+IMAGE_NAME := ${APP_NAME}
 DOCKERFILE := ./Dockerfile
 
 .PHONY: all
@@ -12,11 +12,11 @@ clean:
 	@rm -rf ./bin
 
 .PHONY: build
-build: clean 
+build: clean
 	@go build -a -installsuffix cgo -o ./bin/app .
 
 .PHONY: package
-package: 
+package:
 	@echo "Building image $(REPOSITORY)/$(IMAGE_NAME):$(GIT_SHA_FETCH)"
 	@echo "Using Dockerfile: $(DOCKERFILE)"
 	docker build -t $(REPOSITORY)/$(IMAGE_NAME):$(GIT_SHA_FETCH) -f $(DOCKERFILE) .
@@ -31,7 +31,7 @@ test:
 	@go test -v ./...
 
 
-# --- release --- 
+# --- release ---
 .PHONY: release
 release: clean
 	GOOS=darwin     GOARCH=amd64    go build -ldflags '-s' -o bin/${APP_NAME}-darwin-amd64       .
