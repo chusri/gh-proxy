@@ -3,10 +3,13 @@ package main
 import (
 	_ "embed"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -28,6 +31,7 @@ func main() {
 
 	r.Any("/show/*targetUrl", showMeTheContent)
 	r.Any("/download/*proxyPath", handleDownload)
+	r.Any("/blog/*targetUrl", handleBlog)
 
 	srv := &http.Server{
 		Addr:    ":8080",
@@ -142,4 +146,118 @@ func showMeTheContent(c *gin.Context) {
 		resp.Body,
 		nil,
 	)
+}
+
+var (
+	srcHrefRegex = regexp.MustCompile(`(?i)((?:src|href|action|poster)\s*=\s*["'])([^"']+)(["'])`)
+	cssURLRegex  = regexp.MustCompile(`(?i)url\(\s*["']?([^)"']+?)["']?\s*\)`)
+)
+
+func handleBlog(c *gin.Context) {
+	targetURL := c.Param("targetUrl")
+	if targetURL == "" {
+		c.String(http.StatusBadRequest, "No target URL provided")
+		return
+	}
+	targetURL = targetURL[1:]
+
+	if !regexp.MustCompile(`^(http|https)://`).MatchString(targetURL) {
+		c.String(http.StatusBadRequest, "Invalid URL")
+		return
+	}
+
+	resp, err := http.Get(targetURL)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Error retrieving: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		c.String(resp.StatusCode, "Remote returned status: %d", resp.StatusCode)
+		return
+	}
+
+	baseURL := resp.Request.URL
+	contentType := resp.Header.Get("Content-Type")
+
+	switch {
+	case strings.Contains(contentType, "text/html"):
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			c.String(http.StatusInternalServerError, "Error reading response: %v", err)
+			return
+		}
+		rewritten := rewriteHTML(string(body), baseURL)
+		c.Data(http.StatusOK, contentType, []byte(rewritten))
+
+	case strings.Contains(contentType, "text/css"):
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			c.String(http.StatusInternalServerError, "Error reading response: %v", err)
+			return
+		}
+		rewritten := rewriteCSS(string(body), baseURL)
+		c.Data(http.StatusOK, contentType, []byte(rewritten))
+
+	default:
+		c.DataFromReader(http.StatusOK, resp.ContentLength, contentType, resp.Body, nil)
+	}
+}
+
+func rewriteHTML(html string, baseURL *url.URL) string {
+	return srcHrefRegex.ReplaceAllStringFunc(html, func(match string) string {
+		parts := srcHrefRegex.FindStringSubmatch(match)
+		originalURL := parts[2]
+
+		if shouldSkipURL(originalURL) {
+			return match
+		}
+
+		resolved := resolveSameOriginURL(originalURL, baseURL)
+		if resolved == "" {
+			return match
+		}
+
+		return parts[1] + "/blog/" + resolved + parts[3]
+	})
+}
+
+func rewriteCSS(css string, baseURL *url.URL) string {
+	return cssURLRegex.ReplaceAllStringFunc(css, func(match string) string {
+		originalURL := cssURLRegex.FindStringSubmatch(match)[1]
+
+		if shouldSkipURL(originalURL) {
+			return match
+		}
+
+		resolved := resolveSameOriginURL(originalURL, baseURL)
+		if resolved == "" {
+			return match
+		}
+
+		return "url(\"/blog/" + resolved + "\")"
+	})
+}
+
+func shouldSkipURL(u string) bool {
+	return strings.HasPrefix(u, "#") ||
+		strings.HasPrefix(u, "data:") ||
+		strings.HasPrefix(u, "javascript:") ||
+		strings.HasPrefix(u, "mailto:") ||
+		strings.HasPrefix(u, "/blog/")
+}
+
+func resolveSameOriginURL(rawURL string, baseURL *url.URL) string {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+
+	if parsed.IsAbs() && parsed.Host != baseURL.Host {
+		return ""
+	}
+
+	resolved := baseURL.ResolveReference(parsed)
+	return resolved.String()
 }

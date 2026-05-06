@@ -77,3 +77,4 @@ tmp
 
 *.configs.yaml
 .envrc
+gh-proxy
